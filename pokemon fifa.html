@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Poké Penalty — Pikachu & Friends</title>
+<style>
+  :root{
+    --sky:#87CEEB; --grass-1:#6fbf5a; --grass-2:#4f9b3a; --goal-white:#fff;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(var(--sky),#cfefff);font-family:Inter,system-ui,Arial}
+  .stage{position:relative;width:100vw;height:100vh;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;padding-bottom:20px}
+
+  .field {
+    width: min(1100px, 96vw);
+    height: min(640px, 86vh);
+    background: linear-gradient(180deg,var(--grass-1) 45%, var(--grass-2) 100%);
+    border-radius:14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    position:relative; overflow:visible; touch-action: none;
+  }
+
+  /* HUD */
+  .hud, .timer, .highScore { position:absolute; background:rgba(255,255,255,0.95); padding:8px 12px; border-radius:10px; font-weight:700; box-shadow:0 6px 18px rgba(0,0,0,0.12); z-index:40; }
+  .hud{ left:18px; top:18px; } .timer{ left:18px; top:58px; color:#c00; } .highScore{ left:18px; top:98px; color:#006; }
+
+  .difficulty { position:absolute; right:18px; top:60px; background:#fff;padding:8px 12px;border-radius:10px;font-weight:700; z-index:40;}
+  .characterSelect { position:absolute; right:18px; top:18px; background:#fff;padding:8px 12px;border-radius:10px;font-weight:700; z-index:45; display:flex; gap:8px; align-items:center; }
+ .hint {position: absolute;top: 12px; /* move to top */left: 50%; /* center horizontally */
+  transform: translateX(-50%); /* exact horizontal centering */color: #073;background: rgba(255,255,255,0.9);padding: 8px 12px;border-radius: 10px;font-weight: 600;font-size: 13px;z-index: 40;
+}
+
+  .power { position:absolute; left:18px; bottom:18px; background:rgba(0,0,0,0.5); color:white;padding:8px 12px;border-radius:10px;font-weight:700; z-index:40; }
+
+  /* play area */
+  .goal { position:absolute; right:48px; bottom:64px; width:220px; height:130px; border:8px solid var(--goal-white); border-radius:6px; z-index:20; box-sizing:content-box; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));}
+  .goal.shake { animation: netShake 420ms ease-in-out; }
+  @keyframes netShake { 0%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}100%{transform:translateX(0)} }
+
+  .goalieWrap{ position:absolute; right:78px; bottom:118px; width:140px; height:160px; display:flex; align-items:flex-end; justify-content:center; pointer-events:none; z-index:30; }
+  .goalie{ width:120px; transition: transform 280ms ease; }
+
+  .shadow { position:absolute; left:140px; bottom:48px; width:160px; height:24px; background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), transparent 60%); border-radius:50%; filter: blur(3px); z-index:5; }
+
+  .lightning { position:absolute; right:42px; bottom:120px; width:260px; height:160px; pointer-events:none; mix-blend-mode: screen; opacity:0; z-index:25; }
+  .lightning.show { animation: lightningPop 700ms ease forwards; }
+  @keyframes lightningPop { 0%{opacity:0;transform:scale(0.7)}20%{opacity:1;transform:scale(1.08)}100%{opacity:0;transform:scale(1.2)} }
+
+  /* striker & ball */
+  .striker { position:absolute; left:60px; bottom:64px; width:160px; transition: transform 220ms ease; z-index:30; transform-origin:center bottom; }
+  .ball { position:absolute; width:60px; bottom:128px; left:170px; transform-origin:center; z-index:35; touch-action:none; }
+
+  /* kick animations: base */
+  .kick {
+    animation: none;
+  }
+  /* pikachu quick hop kick */
+  .pikachu-kick.kick {
+    animation: pikaKick 420ms cubic-bezier(.2,.9,.2,1);
+    transform-origin:center bottom;
+  }
+  @keyframes pikaKick {
+    0% { transform: translateY(0) rotate(0) }
+    30% { transform: translateY(-40px) rotate(-6deg) }
+    60% { transform: translateY(-18px) rotate(6deg) }
+    100% { transform: translateY(0) rotate(0) }
+  }
+
+  /* charmander stomp-kick (bigger) */
+  .charmander-kick.kick {
+    animation: charKick 520ms cubic-bezier(.2,.9,.25,1);
+  }
+  @keyframes charKick {
+    0% { transform: translateY(0) rotate(0) }
+    25% { transform: translateY(-64px) rotate(-12deg) scale(1.04) }
+    60% { transform: translateY(-20px) rotate(10deg) }
+    100% { transform: translateY(0) rotate(0) scale(1) }
+  }
+
+  /* bulbasaur low-swipe (little hop) */
+  .bulbasaur-kick.kick {
+    animation: bulbKick 420ms cubic-bezier(.2,.9,.2,1);
+  }
+  @keyframes bulbKick {
+    0% { transform: translateY(0) rotate(0) }
+    30% { transform: translateY(-28px) rotate(-4deg) }
+    60% { transform: translateY(-10px) rotate(6deg) }
+    100% { transform: translateY(0) rotate(0) }
+  }
+
+  /* character images small */
+  .charThumb { width:28px; height:28px; border-radius:6px; border:2px solid transparent; cursor:pointer; }
+  .charThumb.selected { border-color:#fdd835; box-shadow:0 6px 14px rgba(0,0,0,0.15); }
+
+  .gameOverScreen { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.75); display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-size:26px; font-weight:800; gap:20px; z-index:1000; display:none; }
+  .restartBtn { background:#fdd835; border:none; padding:12px 22px; font-size:20px; border-radius:12px; cursor:pointer; font-weight:800; }
+
+  @media (max-width:720px){
+    .striker{ left:20px; width:140px; bottom:48px }
+    .ball{ width:48px; bottom:96px; left:120px }
+    .goal{ right:26px; bottom:46px; width:160px; height:96px }
+    .goalieWrap{ right:46px; bottom:80px }
+  }
+</style>
+</head>
+<body>
+<div class="gameOverScreen" id="gameOverScreen" aria-hidden="true">
+  <div id="finalText"></div>
+  <button class="restartBtn" onclick="restartGame()">Restart</button>
+</div>
+
+<div class="stage">
+  <div class="field" id="field" aria-label="Poké penalty — click/tap to shoot">
+
+    <div class="characterSelect" id="characterSelect" aria-hidden="false">
+      Select:
+      <img class="charThumb selected" id="charPika" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" title="Pikachu">
+      <img class="charThumb" id="charChar" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png" title="Charmander">
+      <img class="charThumb" id="charBulb" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png" title="Bulbasaur">
+    </div>
+
+    <div class="hud">Score: <span id="score">0</span></div>
+    <div class="timer">Time: <span id="timeLeft">60</span>s</div>
+    <div class="highScore">High Score: <span id="highScore">0</span></div>
+
+    <div class="difficulty">
+      Difficulty:
+      <select id="difficultySelect" aria-label="Difficulty select">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+    </div>
+
+    <div class="hint">Click/tap to shoot • Double-click/tap = POWER • Arrow keys for directions • Space toggles power</div>
+    <div class="power" id="powerTag">Power: Normal</div>
+
+    <div class="goal" id="goal" aria-hidden="true"></div>
+
+    <div class="lightning" id="lightning" aria-hidden="true">
+      <svg viewBox="0 0 200 120" preserveAspectRatio="none">
+        <defs><linearGradient id="lg"><stop offset="0" stop-color="#fff7b3"/><stop offset="1" stop-color="#ffe16b"/></linearGradient></defs>
+        <path d="M40 10 L70 36 L52 38 L96 86 L62 86 L76 108 L44 70 L70 68 Z" fill="url(#lg)" opacity="0.98"/>
+      </svg>
+    </div>
+
+    <div class="goalieWrap"><img id="goalie" class="goalie" src="" alt="goalie"></div>
+
+    <img id="striker" class="striker pikachu-kick" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" alt="striker">
+    <img id="ball" class="ball" src="https://upload.wikimedia.org/wikipedia/commons/6/6e/Football_(soccer_ball).svg" alt="ball">
+
+    <div class="shadow" aria-hidden="true"></div>
+
+  </div>
+</div>
+
+<script>
+/* =========================
+   Elements & state
+   ========================= */
+const field = document.getElementById('field');
+const ball = document.getElementById('ball');
+const striker = document.getElementById('striker');
+const goalieImg = document.getElementById('goalie');
+const goal = document.getElementById('goal');
+const lightning = document.getElementById('lightning');
+const powerTag = document.getElementById('powerTag');
+
+const scoreEl = document.getElementById('score');
+const timeEl = document.getElementById('timeLeft');
+const highEl = document.getElementById('highScore');
+
+let score = 0;
+let timeLeft = 60;
+let busy = false;
+let powerMode = false;
+let timer = null;
+
+/* high score */
+let highScore = Number(localStorage.getItem('pkHighScore')) || 0;
+highEl.textContent = highScore;
+
+/* difficulty */
+let difficulty = 'normal';
+const difficultySelect = document.getElementById('difficultySelect');
+const difficultySettings = {
+  easy:   { goalieBoost: 0.7, reactionMultiplier: 0.85 },
+  normal: { goalieBoost: 1.0, reactionMultiplier: 1.0 },
+  hard:   { goalieBoost: 1.25, reactionMultiplier: 1.2 }
+};
+difficultySelect.addEventListener('change', e => difficulty = e.target.value);
+
+/* characters */
+const characters = {
+  pikachu: { id:'pikachu', src:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png', class:'pikachu-kick', powerMult:1.0 },
+  charmander: { id:'charmander', src:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png', class:'charmander-kick', powerMult:1.08 },
+  bulbasaur: { id:'bulbasaur', src:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png', class:'bulbasaur-kick', powerMult:0.95 }
+};
+let currentChar = characters.pikachu;
+
+/* goalie roster */
+const goalies = [
+  {name:'Snorlax', url:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png', skill:0.78},
+  {name:'Blastoise', url:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/9.png', skill:0.7},
+  {name:'Greninja', url:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/658.png', skill:0.85},
+  {name:'Lucario', url:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/448.png', skill:0.82},
+  {name:'Infernape', url:'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/392.png', skill:0.77}
+];
+let currentGoalie = randomGoalie();
+applyGoalie(currentGoalie);
+
+/* timer */
+function startTimer(){
+  clearInterval(timer);
+  timer = setInterval(()=> {
+    timeLeft--;
+    timeEl.textContent = timeLeft;
+    if(timeLeft <= 0) endGame();
+  }, 1000);
+}
+startTimer();
+
+function endGame(){
+  busy = true;
+  clearInterval(timer);
+  if(score > highScore){
+    localStorage.setItem('pkHighScore', String(score));
+    highScore = score;
+    highEl.textContent = highScore;
+  }
+  document.getElementById('finalText').textContent = `Time's Up! Final Score: ${score}`;
+  document.getElementById('gameOverScreen').style.display = 'flex';
+}
+function restartGame(){
+  score = 0; scoreEl.textContent = 0;
+  timeLeft = 60; timeEl.textContent = 60;
+  document.getElementById('gameOverScreen').style.display = 'none';
+  busy = false;
+  resetBall();
+  startTimer();
+}
+
+/* audio helpers */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function ensureAudio(){ if(!audioCtx) audioCtx = new AudioCtx(); }
+function playCheer(){ ensureAudio(); const ctx=audioCtx, now=ctx.currentTime; [440,660,880].forEach((f,i)=>{ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=f; g.gain.value=0.0006; o.connect(g); g.connect(ctx.destination); o.start(now+0.02+i*0.02); g.gain.linearRampToValueAtTime(0.03, now+0.04+i*0.02); g.gain.linearRampToValueAtTime(0.001, now+0.38+i*0.02); o.stop(now+0.45+i*0.02); }); }
+function playBlock(){ ensureAudio(); const ctx=audioCtx; const o=ctx.createOscillator(), g=ctx.createGain(); o.type='square'; o.frequency.value=220; g.gain.value=0.02; o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.22); o.stop(ctx.currentTime+0.24); }
+function playZap(){ ensureAudio(); const ctx=audioCtx; const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(1200, ctx.currentTime); o.frequency.exponentialRampToValueAtTime(400, ctx.currentTime+0.25); g.gain.value=0.08; o.connect(g); g.connect(ctx.destination); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.28); o.start(); o.stop(ctx.currentTime+0.3); }
+
+/* =========================
+   Helpers
+   ========================= */
+function randomGoalie(){ return goalies[Math.floor(Math.random()*goalies.length)]; }
+function applyGoalie(g){ currentGoalie = g; goalieImg.src = g.url; goalieImg.alt = g.name; goalieImg.style.width = '120px'; goalieImg.style.transform = 'translate(0,0)'; }
+function resetBall(){ ball.style.transition='none'; ball.style.transform='translate(0px,0px) rotate(0deg)'; setTimeout(()=> ball.style.transition='',50); }
+function getCenter(el){ const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, r }; }
+
+/* =========================
+   Character selection
+   ========================= */
+const thumbP = document.getElementById('charPika');
+const thumbC = document.getElementById('charChar');
+const thumbB = document.getElementById('charBulb');
+function selectCharacter(charObj, thumbEl){
+  // update visuals
+  document.querySelectorAll('.charThumb').forEach(i=>i.classList.remove('selected'));
+  thumbEl.classList.add('selected');
+  currentChar = charObj;
+  striker.src = charObj.src;
+  // update striker class for animation
+  striker.classList.remove('pikachu-kick','charmander-kick','bulbasaur-kick','kick');
+  striker.classList.add(charObj.class);
+}
+thumbP.addEventListener('click', ()=> selectCharacter(characters.pikachu, thumbP));
+thumbC.addEventListener('click', ()=> selectCharacter(characters.charmander, thumbC));
+thumbB.addEventListener('click', ()=> selectCharacter(characters.bulbasaur, thumbB));
+
+/* =========================
+   Click / Tap / Keyboard handling (no drag)
+   ========================= */
+
+/* double-click / double-tap: toggle power */
+let lastTap = 0;
+field.addEventListener('dblclick', ()=> togglePower());
+field.addEventListener('pointerdown', (ev)=>{
+  const now = performance.now();
+  if(now - lastTap < 300){ togglePower(); }
+  lastTap = now;
+});
+function togglePower(){ powerMode = !powerMode; powerTag.textContent = powerMode ? 'Power: ON' : 'Power: Normal'; powerTag.style.background = powerMode ? 'rgba(255,200,60,0.95)' : 'rgba(0,0,0,0.5)'; }
+
+/* click/tap to shoot */
+field.addEventListener('click', (e) => { shootTo(e.clientX, e.clientY); });
+field.addEventListener('touchend', (e) => {
+  const t = e.changedTouches[0];
+  shootTo(t.clientX, t.clientY);
+});
+
+/* keyboard: arrow keys shoot preset directions. Space toggles power */
+document.addEventListener('keydown', (e) => {
+  if(e.code === 'Space'){ e.preventDefault(); togglePower(); return; }
+  if(busy) return;
+  const centerX = window.innerWidth/2;
+  const centerY = window.innerHeight/2;
+  if(e.key === 'ArrowUp'){ shootTo(centerX, centerY - 220); }
+  else if(e.key === 'ArrowDown'){ shootTo(centerX, centerY + 120); }
+  else if(e.key === 'ArrowLeft'){ shootTo(centerX - 200, centerY); }
+  else if(e.key === 'ArrowRight'){ shootTo(centerX + 200, centerY); }
+});
+
+/* =========================
+   Shooting + smart goalie (click/tap)
+   ========================= */
+function shootTo(x, y){
+  if(busy) return;
+  busy = true;
+
+  // animate striker kick
+  striker.classList.remove('kick');
+  // trigger reflow then add class to restart animation
+  void striker.offsetWidth;
+  striker.classList.add('kick');
+
+  // apply striker-specific power multiplier
+  const charPow = currentChar.powerMult || 1.0;
+
+  currentGoalie = randomGoalie();
+  applyGoalie(currentGoalie);
+
+  const br = ball.getBoundingClientRect();
+  const dx = x - (br.left + br.width/2);
+  const dy = y - (br.top + br.height/2);
+
+  // final vector uses power mode, difficulty and character
+  const powerFactor = (powerMode ? 1.5 : 1.0) * charPow;
+  const finalDx = dx * powerFactor;
+  const finalDy = dy * powerFactor;
+
+  // animate ball
+  const travelTime = Math.min(1.1, 0.6 + (Math.hypot(finalDx, finalDy) / 600));
+  ball.style.transition = `transform ${travelTime}s cubic-bezier(.15,.9,.25,1)`;
+  const rotateAmount = powerMode ? 1080 : 720;
+  ball.style.transform = `translate(${finalDx}px, ${finalDy}px) rotate(${rotateAmount}deg)`;
+
+  // goalie react + smart prediction (similar to earlier design)
+  setTimeout(() => {
+    const landedX = (br.left + br.width/2) + finalDx;
+    const landedY = (br.top + br.height/2) + finalDy;
+    const gr = goal.getBoundingClientRect();
+    const inside = (landedX > gr.left && landedX < gr.right && landedY > gr.top && landedY < gr.bottom);
+
+    if(!inside){
+      // miss -> reset ball
+      setTimeout(()=> {
+        ball.style.transition = 'transform 0.6s ease';
+        ball.style.transform = 'translate(0px,0px) rotate(0deg)';
+        busy = false;
+      }, 400);
+      return;
+    }
+
+    // shot sector
+    const relX = (landedX - gr.left) / gr.width;
+    let shotSector = 'center';
+    if(relX < 0.33) shotSector = 'left';
+    else if(relX > 0.66) shotSector = 'right';
+
+    // goalie prediction (smarter when strong lateral component)
+    const lateralBias = Math.abs(finalDx) / Math.max(1, Math.hypot(finalDx, finalDy));
+    let predictNoise = Math.random();
+    let predictedSector;
+    if(predictNoise < 0.18) predictedSector = 'left';
+    else if(predictNoise > 0.82) predictedSector = 'right';
+    else predictedSector = 'center';
+    if(Math.random() < 0.45 * lateralBias){ predictedSector = finalDx < 0 ? 'left' : (finalDx > 0 ? 'right' : predictedSector); }
+
+    // dive visual
+    const sectorXCenters = { left: gr.left + gr.width*0.18, center: gr.left + gr.width*0.5, right: gr.left + gr.width*0.82 };
+    const diveTargetX = sectorXCenters[predictedSector];
+    const diveTargetY = gr.top + gr.height*0.45;
+    const goalieRect = goalieImg.getBoundingClientRect();
+    const diveX = (diveTargetX - (goalieRect.left + goalieRect.width/2)) * difficultySettings[difficulty].reactionMultiplier;
+    const diveY = (diveTargetY - (goalieRect.top + goalieRect.height/2)) * 0.9 * difficultySettings[difficulty].reactionMultiplier;
+    const diveRotate = diveX > 0 ? 12 : -12;
+    goalieImg.style.transform = `translate(${diveX}px, ${diveY}px) rotate(${diveRotate}deg)`;
+
+    // compute save chance
+    const baseSkill = currentGoalie.skill;
+    const predictedCorrect = (predictedSector === shotSector);
+    const predictionModifier = predictedCorrect ? 1.18 : 0.78;
+    const powerModifier = powerMode ? 0.55 : 1.0;
+    const settings = difficultySettings[difficulty];
+    let saveChance = baseSkill * settings.goalieBoost * predictionModifier * powerModifier;
+    saveChance = Math.max(0, Math.min(0.98, saveChance));
+
+    // decide
+    const roll = Math.random();
+    if(roll < saveChance){
+      // SAVE
+      playBlock();
+      const deflectX = (predictedSector === 'right' ? 1 : -1) * (80 + Math.random()*80);
+      const deflectY = -40 - Math.random()*30;
+      ball.style.transition = 'transform 0.5s ease';
+      ball.style.transform = `translate(${finalDx + deflectX}px, ${finalDy + deflectY}px) rotate(360deg)`;
+      setTimeout(()=> {
+        resetBall();
+        goalieImg.style.transform = 'translate(0,0)';
+        busy = false;
+      }, 700);
+    } else {
+      // GOAL
+      score++; scoreEl.textContent = score;
+      playZap(); setTimeout(()=> playCheer(), 150);
+      striker.classList.add('celebrate');
+      goal.classList.add('shake'); lightning.classList.add('show');
+
+      const netCenterX = (gr.left + gr.right)/2 - (br.left + br.width/2);
+      const netCenterY = (gr.top + gr.bottom)/2 - (br.top + br.height/2);
+      ball.style.transition = 'transform 0.45s ease';
+      ball.style.transform = `translate(${netCenterX}px, ${netCenterY}px) rotate(${1080}deg)`;
+
+      setTimeout(()=> {
+        goal.classList.remove('shake'); lightning.classList.remove('show'); striker.classList.remove('celebrate');
+      }, 900);
+
+      setTimeout(()=> {
+        resetBall();
+        goalieImg.style.transform = 'translate(0,0)';
+        busy = false;
+      }, 1200);
+    }
+
+  }, travelTime * 1000 + 30);
+}
+
+/* Idle goalie wiggle */
+setInterval(()=>{
+  if(Math.random() < 0.35 && !busy){
+    goalieImg.style.transform = 'translateY(-16px)';
+    setTimeout(()=> goalieImg.style.transform = 'translate(0,0)', 220);
+  }
+}, 2300);
+
+/* announce */
+console.log('Goalie loaded:', currentGoalie.name, currentGoalie.skill);
+
+/* reset on resize */
+window.addEventListener('resize', () => {
+  resetBall();
+  goalieImg.style.transform = 'translate(0,0)';
+});
+
+/* initial reset */
+resetBall();
+
+</script>
+</body>
+</html>
