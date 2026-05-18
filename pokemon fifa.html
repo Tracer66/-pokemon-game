@@ -1040,6 +1040,9 @@ const state = {
   powerMode: false,
   sound: true,
   timer: null,
+  musicTimer: null,
+  crowdTimer: null,
+  backgroundNodes: [],
   chargeTicker: null,
   chargeStart: 0,
   shotPower: .42,
@@ -1055,6 +1058,7 @@ let audioCtx = null;
 function ensureAudio() {
   if (!state.sound || !AudioCtx) return null;
   if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
 
@@ -1084,6 +1088,110 @@ function soundGoal() {
 function soundSave() { tone(170, .2, 'square', .035); }
 function soundShoot() { tone(320, .08, 'sawtooth', .018); }
 function soundUi() { tone(760, .06, 'sine', .015); }
+
+function rememberBackgroundNode(node, stopAt) {
+  node.__backgroundStopAt = stopAt;
+  state.backgroundNodes.push(node);
+  node.onended = () => {
+    state.backgroundNodes = state.backgroundNodes.filter((entry) => entry !== node);
+  };
+}
+
+function backgroundTone(frequency, duration = .24, type = 'sine', gain = .008, delay = 0) {
+  const ctx = ensureAudio();
+  if (!ctx || state.screen !== 'game' || state.paused) return;
+  const start = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const vol = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(frequency, start);
+  vol.gain.setValueAtTime(.0001, start);
+  vol.gain.exponentialRampToValueAtTime(gain, start + .04);
+  vol.gain.exponentialRampToValueAtTime(.0001, start + duration);
+  osc.connect(vol);
+  vol.connect(ctx.destination);
+  const stopAt = start + duration + .04;
+  rememberBackgroundNode(osc, stopAt);
+  osc.start(start);
+  osc.stop(stopAt);
+}
+
+const musicPattern = [
+  { note: 392, delay: 0 },
+  { note: 494, delay: .35 },
+  { note: 587, delay: .7 },
+  { note: 659, delay: 1.05 },
+  { note: 587, delay: 1.55 },
+  { note: 494, delay: 1.9 },
+  { note: 440, delay: 2.35 },
+  { note: 523, delay: 2.8 }
+];
+
+function playBackgroundBar() {
+  if (!state.sound || state.screen !== 'game' || state.paused) return;
+  musicPattern.forEach(({ note, delay }, index) => {
+    backgroundTone(note, .24, index % 2 ? 'triangle' : 'sine', .008, delay);
+    backgroundTone(note / 2, .34, 'sine', .0045, delay);
+  });
+  backgroundTone(196, 1.4, 'triangle', .004, 0);
+  backgroundTone(247, 1.4, 'triangle', .004, 1.55);
+}
+
+function playCrowdAmbience() {
+  const ctx = ensureAudio();
+  if (!ctx || state.screen !== 'game' || state.paused) return;
+  const duration = 1.15;
+  const sampleCount = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, sampleCount, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < sampleCount; i += 1) {
+    last = last * .94 + (Math.random() * 2 - 1) * .06;
+    data[i] = last;
+  }
+
+  const source = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  source.buffer = buffer;
+  filter.type = 'bandpass';
+  filter.frequency.value = 520;
+  filter.Q.value = .65;
+  gain.gain.setValueAtTime(.0001, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(.018, ctx.currentTime + .22);
+  gain.gain.linearRampToValueAtTime(.0001, ctx.currentTime + duration);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  const stopAt = ctx.currentTime + duration + .03;
+  rememberBackgroundNode(source, stopAt);
+  source.start();
+  source.stop(stopAt);
+}
+
+function stopBackgroundSounds() {
+  clearInterval(state.musicTimer);
+  clearInterval(state.crowdTimer);
+  state.musicTimer = null;
+  state.crowdTimer = null;
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  state.backgroundNodes.forEach((node) => {
+    if (!node.__backgroundStopped && now < node.__backgroundStopAt) {
+      node.__backgroundStopped = true;
+      node.stop(0);
+    }
+  });
+  state.backgroundNodes = [];
+}
+
+function startBackgroundSounds() {
+  stopBackgroundSounds();
+  if (!state.sound || state.screen !== 'game' || state.paused) return;
+  playBackgroundBar();
+  playCrowdAmbience();
+  state.musicTimer = setInterval(playBackgroundBar, 3600);
+  state.crowdTimer = setInterval(playCrowdAmbience, 2400);
+}
 
 function randomGoalie() {
   return goalies[Math.floor(Math.random() * goalies.length)];
@@ -1128,6 +1236,7 @@ function startMatch({ practice = false } = {}) {
   setGoalie();
   showOverlay(null);
   updateHud();
+  startBackgroundSounds();
   clearInterval(state.timer);
   if (!practice) {
     state.timer = setInterval(() => {
@@ -1143,17 +1252,20 @@ function startMatch({ practice = false } = {}) {
 function pauseGame() {
   if (state.screen !== 'game') return;
   state.paused = true;
+  stopBackgroundSounds();
   showOverlay('pause');
 }
 
 function resumeGame() {
   state.paused = false;
   showOverlay(null);
+  startBackgroundSounds();
   soundUi();
 }
 
 function endGame() {
   clearInterval(state.timer);
+  stopBackgroundSounds();
   state.screen = 'over';
   state.busy = true;
   const isRecord = state.score > state.highScore;
@@ -1173,6 +1285,7 @@ function endGame() {
 
 function mainMenu() {
   clearInterval(state.timer);
+  stopBackgroundSounds();
   state.screen = 'menu';
   state.paused = false;
   state.busy = true;
@@ -1199,7 +1312,12 @@ function selectCharacter(id) {
 function toggleSound() {
   state.sound = !state.sound;
   $('#soundBtn').textContent = state.sound ? '🔊' : '🔇';
-  soundUi();
+  if (state.sound) {
+    soundUi();
+    startBackgroundSounds();
+  } else {
+    stopBackgroundSounds();
+  }
 }
 
 function togglePower(force) {
@@ -1504,6 +1622,11 @@ document.addEventListener('keydown', (event) => {
 window.addEventListener('resize', () => {
   resetBall();
   goalieImg.style.transform = 'translate(0, 0) rotate(0deg)';
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopBackgroundSounds();
+  else startBackgroundSounds();
 });
 
 setInterval(() => {

@@ -17,4 +17,4 @@ Then visit `http://localhost:8000/pokemon%20fifa.html`.
 - Responsive stadium interface that adapts to phones, tablets, and desktop screens.
 - Drag, tap, keyboard, and mobile quick-pad shooting controls.
 - Character selection with different power, control, and curve attributes.
-- Difficulty tiers, combos, practice mode, timer mode, high-score saving, pause menu, sound toggle, and animated result feedback.
+- Difficulty tiers, combos, practice mode, timer mode, high-score saving, pause menu, sound toggle, synthesized background music/crowd ambience, and animated result feedback.
